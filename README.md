@@ -12,7 +12,8 @@ Built for the [Build Small Hackathon](https://huggingface.co/build-small-hackath
 | 🤖 **Model** | [`thetom-ai/Spurgeon-Gemma-4-12B-v1`](https://huggingface.co/thetom-ai/Spurgeon-Gemma-4-12B-v1) (Q8_0 GGUF) |
 | 🚀 **Live demo** | [Space: build-small-hackathon/pastors-pocket-spurgeon](https://huggingface.co/spaces/build-small-hackathon/pastors-pocket-spurgeon) |
 | ⚡ **Serving engine** | [TurboQuant llama.cpp fork](https://github.com/TheTom/llama-cpp-turboquant) (`turbo4` KV compression) |
-| 🎬 **Demo video** | see the Space, or `out/spurgeon-demo.mp4` |
+| 🎬 **Demo video** | see the Space |
+| 📓 **Field notes** | [how it was built and trained](./FIELD_NOTES.md) |
 
 ## What it does
 
