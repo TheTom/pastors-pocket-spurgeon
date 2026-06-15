@@ -10,7 +10,7 @@ Env:
   SPURGEON_MODEL      model alias (default: spurgeon)
   SPURGEON_TOKEN      optional bearer token (Cloudflare Access service token, etc.)
 """
-import os, re, json, urllib.request
+import os, re, json, time, urllib.request, urllib.error
 import gradio as gr
 
 # strip a stray leading list-marker the model sometimes emits (e.g. "1\n\n...")
@@ -68,6 +68,30 @@ def _endpoint(): return os.environ.get("SPURGEON_ENDPOINT", "").rstrip("/")
 def _model():    return os.environ.get("SPURGEON_MODEL", "spurgeon")
 def _token():    return os.environ.get("SPURGEON_TOKEN", "")
 
+def _wait_ready(timeout=180):
+    """Poll the endpoint's /models until it answers 200. A serverless backend
+    (Modal scale-to-zero) returns 503 'Loading model' on a cold start while the
+    container spins up and the GGUF loads; this lets the first request wait it out
+    instead of erroring. No-op (~one fast call) when the backend is already warm."""
+    ep = _endpoint()
+    if not ep:
+        return
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            r = urllib.request.Request(ep + "/models")
+            if _token():
+                r.add_header("Authorization", "Bearer " + _token())
+            with urllib.request.urlopen(r, timeout=10) as resp:
+                if resp.status == 200:
+                    return
+        except urllib.error.HTTPError as e:
+            if e.code != 503:
+                return  # a real error, let the caller's request surface it
+        except Exception:
+            pass
+        time.sleep(3)
+
 def _self_serve():
     """On a GPU Space, boot a llama.cpp OpenAI server for the local GGUF in the
     background. Best-effort: any failure leaves the app on canned answers."""
@@ -102,7 +126,7 @@ if os.environ.get("SPURGEON_SELF_SERVE") == "1" and not os.environ.get("SPURGEON
     import threading
     threading.Thread(target=_self_serve, daemon=True).start()
 
-WAKE_SECS = 420  # ~7 min cold-start estimate (re-downloads + loads the GGUF)
+WAKE_SECS = 75  # Modal serverless cold start: container schedule + ~18s GGUF load
 
 def _backend_ready():
     """True only when the llama.cpp server is actually serving (not the HF
@@ -141,9 +165,9 @@ def status_banner(elapsed):
         ".svc-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#a05a14,#caa15a);transition:width .8s ease}"
         "</style>"
         "<div class='svc svc-wake'>&#9203; <b>Lighting the study lamp&hellip;</b> "
-        "the model was spun down to save compute and is waking "
-        "(about 5&ndash;7 minutes on first visit). You&#39;ll receive prepared demo "
-        "answers until it&#39;s live."
+        "the model runs on a serverless GPU that spins down to save compute and is "
+        "waking (about a minute on first visit). Ask your question now &mdash; it will "
+        "be answered as soon as the lamp is lit."
         f"<div class='svc-bar'><div class='svc-fill' style='width:{pct}%'></div></div></div>"
     )
     return html, _gr.Timer(active=True), elapsed
@@ -215,6 +239,7 @@ def _stream(messages, max_tokens=900, state=None, stop=None, temp=0.85):
                                  headers={"Content-Type": "application/json"})
     if _token():
         req.add_header("Authorization", "Bearer " + _token())
+    _wait_ready()  # survive a serverless cold start (Modal scale-to-zero, model loading 503)
     with urllib.request.urlopen(req, timeout=600) as r:
         for raw in r:
             line = raw.decode("utf-8", "ignore").strip()

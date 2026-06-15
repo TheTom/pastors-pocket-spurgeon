@@ -107,6 +107,23 @@ Two engineering notes from the build:
   forcing the Summary, Strengths, Concerns, and A Word of Exhortation headers so the model
   cannot drop a section.
 
+## Serving it live (Modal, scale-to-zero GPU)
+
+The model runs on a serverless **NVIDIA L4** on Modal. The image compiles the TurboQuant
+llama.cpp fork for `sm_89` and bakes the 12.6 GB Q8_0 GGUF in, so a cold start only pays the
+model load from local disk (about 18 seconds), not a multi-gigabyte download. A single
+`@modal.web_server` proxies llama.cpp's OpenAI port straight through.
+
+The point of the serverless shape is cost. The container idles to **zero** two minutes after
+the last request, so the demo is live for a judge without an always-on GPU bill: it bills only
+while someone is actually asking Spurgeon a question, and it is capped at one L4 so a busy day
+is still measured in dollars, not credits gone.
+
+The KV cache config matters per-GPU. On Blackwell, `turbo4` on both K and V is clean. On this
+L4 (Ada), `turbo4/turbo4` produces garbage, so K stays `q8_0` and only V uses `turbo4`. Same
+fork, same model, different silicon, different safe bundle: a thing you only learn by testing
+on the actual card.
+
 ## Lessons
 
 - Self-distill from a strong base plus a persona prompt. It is cheap, fast, and high quality.
